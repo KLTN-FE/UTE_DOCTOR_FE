@@ -85,7 +85,11 @@ export const usePatientProfile = () => {
       try {
         const response = await getPatientProfile();
         console.log("[usePatientProfile] http trigger success", response);
-        if (mounted && response?.code === rc.SUCCESS) {
+        // Only adopt the HTTP body when it actually carries the profile. This endpoint
+        // returns a pending-style response (data may be null) while the real profile
+        // arrives via the PATIENT_PROFILE socket event — so never overwrite a
+        // socket-delivered profile with a null HTTP payload.
+        if (mounted && response?.code === rc.SUCCESS && response.data) {
           setUser(response.data);
           console.log("[usePatientProfile] profile state updated from HTTP response");
         }
@@ -184,19 +188,27 @@ export const usePatientProfile = () => {
     const bootstrap = async () => {
       console.log("[usePatientProfile] bootstrap started");
 
-      // Realtime is optional. Attach the live-update listener up front, but the
-      // socket must never gate rendering: HTTP is the source of truth and always
-      // resolves `loading`. This prevents the infinite "Đang tải hồ sơ..." when the
-      // socket can't connect (e.g. WS blocked on Vercel).
+      // GET /patients/me is event-driven (api-contract §7, README_SOCKET_REFACTOR_BE):
+      // it only TRIGGERS the pipeline and returns a pending-style response; the full
+      // profile is pushed via the PATIENT_PROFILE socket event to the email room.
+      // Required order: attach listener -> JOIN_ROOM (await ROOM_JOINED) -> HTTP trigger.
+      // If the trigger fires before the room is joined, the BE emits to a room we
+      // haven't joined and the profile is missed ("Không tìm thấy hồ sơ").
       patientProfileSocket.on(SocketEventsEnum.PATIENT_PROFILE, handlePatientProfile);
-      console.log("[usePatientProfile] PATIENT_PROFILE listener attached -> start HTTP trigger");
-      await fetchUserProfile();
+      console.log("[usePatientProfile] PATIENT_PROFILE listener attached -> waiting for room join");
 
-      // Best-effort room join for subsequent live updates; failures/timeouts are
-      // ignored and do not affect the already-rendered profile.
-      void waitForRoomJoin().then((joined) => {
-        console.log("[usePatientProfile] realtime room join settled", { joined, roomJoined });
-      });
+      // waitForRoomJoin carries an 8s timeout, so an unreachable socket resolves
+      // (joined=false) instead of hanging the page forever.
+      const joined = await waitForRoomJoin();
+      if (!mounted) {
+        return;
+      }
+      console.log("[usePatientProfile] room join settled -> firing HTTP trigger", { joined, roomJoined });
+
+      // Fire the trigger regardless: when joined, this makes the BE emit
+      // PATIENT_PROFILE (handled above); when the join timed out, it still resolves
+      // `loading` (profile is unavailable without the socket, but the page won't hang).
+      await fetchUserProfile();
     };
 
     void bootstrap();
