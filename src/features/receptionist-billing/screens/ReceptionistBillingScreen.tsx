@@ -32,6 +32,7 @@ export default function ReceptionistBillingScreen() {
     setCoinInput,
     isDraft,
     isFinalized,
+    isZeroPayable,
     mutatingAction,
     paymentAction,
     paymentDialogOpen,
@@ -39,6 +40,7 @@ export default function ReceptionistBillingScreen() {
     paymentStatus,
     applyCredit,
     applyCoin,
+    resetWalletUsage,
     finalizeBilling,
     openQrPayment,
     markCashPaid,
@@ -51,11 +53,14 @@ export default function ReceptionistBillingScreen() {
     updateMedicationSource,
     resetMedicationDraft,
     walletSummary,
+    walletLimits,
+    walletNeedsReapply,
     loadingWalletSummary,
     walletSummaryError,
   } = useReceptionistBilling();
 
   const controlsDisabled = !billing || !isDraft || Boolean(mutatingAction);
+  const walletControlsDisabled = controlsDisabled || loadingWalletSummary || !walletSummary;
   const paymentControlsDisabled = !billing || !isFinalized || isPaid || Boolean(paymentAction) || paymentDialogOpen;
   const medicationControlsDisabled = !canEditMedications || Boolean(mutatingAction);
 
@@ -346,18 +351,24 @@ export default function ReceptionistBillingScreen() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="flex flex-col gap-3 lg:flex-row">
-                        <Button type="button" onClick={() => void openQrPayment()} disabled={paymentControlsDisabled} className="flex-1 gap-2">
-                          {paymentAction === "qr" ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                          {paymentAction === "qr" ? "Đang tạo QR" : "Pay with QR"}
-                        </Button>
+                        {!isZeroPayable ? (
+                          <Button type="button" onClick={() => void openQrPayment()} disabled={paymentControlsDisabled} className="flex-1 gap-2">
+                            {paymentAction === "qr" ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                            {paymentAction === "qr" ? "Đang tạo QR" : "Pay with QR"}
+                          </Button>
+                        ) : null}
 
                         <Button type="button" variant="outline" onClick={() => void markCashPaid()} disabled={paymentControlsDisabled} className="flex-1 gap-2">
                           {paymentAction === "cash" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />}
-                          {paymentAction === "cash" ? "Đang ghi nhận" : "Mark as Paid (Cash)"}
+                          {paymentAction === "cash" ? "Đang ghi nhận" : isZeroPayable ? "Complete Billing" : "Mark as Paid (Cash)"}
                         </Button>
                       </div>
 
-                      <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">Chỉ dùng tổng tiền trả về từ API. FE không tự tính lại finalPayable.</div>
+                      <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+                        {isZeroPayable
+                          ? "Billing payable is 0. Complete billing uses the existing payment record from finalize and does not create a QR payment."
+                          : "Chỉ dùng tổng tiền trả về từ API. FE không tự tính lại finalPayable."}
+                      </div>
                     </CardContent>
                   </Card>
                 ) : (
@@ -386,8 +397,8 @@ export default function ReceptionistBillingScreen() {
                           </div>
                           {walletSummary.maxApplicableDiscount !== undefined && walletSummary.maxApplicableDiscount > 0 ? (
                             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
-                              <p className="text-xs uppercase tracking-wide text-amber-700 dark:text-amber-300">Max Applicable Discount</p>
-                              <p className="mt-1 text-lg font-semibold text-amber-900 dark:text-amber-100">{walletSummary.maxApplicableDiscount}</p>
+                              <p className="text-xs uppercase tracking-wide text-amber-700 dark:text-amber-300">Max Coin Discount</p>
+                              <p className="mt-1 text-lg font-semibold text-amber-900 dark:text-amber-100">{formatCurrency(walletSummary.maxApplicableDiscount)}</p>
                             </div>
                           ) : null}
                         </div>
@@ -400,11 +411,12 @@ export default function ReceptionistBillingScreen() {
                           <div className="flex items-center justify-between gap-3">
                             <label htmlFor="credit-input" className="text-sm font-medium">Credit</label>
                             <span className={`text-xs font-semibold ${walletSummaryError ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                              {walletSummaryError ? "Error" : `Available: ${walletSummary?.availableCredit || "Loading..."}`}
+                              {walletSummaryError ? "Error" : `Max: ${formatCurrency(walletLimits.creditMax)}`}
                             </span>
                           </div>
-                          <Input id="credit-input" type="number" min={0} step="1" value={creditInput} onChange={(event) => setCreditInput(event.target.value)} disabled={controlsDisabled} />
-                          <Button type="button" onClick={() => void applyCredit()} disabled={controlsDisabled} className="w-full gap-2">
+                          <p className="text-xs text-muted-foreground">Available: {formatCurrency(walletLimits.availableCredit)}. Credit is not capped by max coin discount.</p>
+                          <Input id="credit-input" type="number" min={0} max={walletLimits.creditMax} step="1" value={creditInput} onChange={(event) => setCreditInput(event.target.value)} disabled={walletControlsDisabled} />
+                          <Button type="button" onClick={() => void applyCredit()} disabled={walletControlsDisabled} className="w-full gap-2">
                             {mutatingAction === "credit" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                             {mutatingAction === "credit" ? "Đang áp dụng" : "Apply Credit"}
                           </Button>
@@ -414,22 +426,33 @@ export default function ReceptionistBillingScreen() {
                           <div className="flex items-center justify-between gap-3">
                             <label htmlFor="coin-input" className="text-sm font-medium">Coin</label>
                             <span className={`text-xs font-semibold ${walletSummaryError ? "text-rose-600 dark:text-rose-400" : "text-blue-600 dark:text-blue-400"}`}>
-                              {walletSummaryError ? "Error" : `Available: ${walletSummary?.availableCoins || "Loading..."}`}
+                              {walletSummaryError ? "Error" : `Max: ${formatCurrency(walletLimits.coinMax)}`}
                             </span>
                           </div>
-                          <Input id="coin-input" type="number" min={0} step="1" value={coinInput} onChange={(event) => setCoinInput(event.target.value)} disabled={controlsDisabled} />
-                          <Button type="button" onClick={() => void applyCoin()} disabled={controlsDisabled} className="w-full gap-2">
+                          <p className="text-xs text-muted-foreground">Available: {walletLimits.availableCoins.toLocaleString("vi-VN")}. Coin is capped by max coin discount and remaining payable after Credit.</p>
+                          <Input id="coin-input" type="number" min={0} max={walletLimits.coinMax} step="1" value={coinInput} onChange={(event) => setCoinInput(event.target.value)} disabled={walletControlsDisabled} />
+                          <Button type="button" onClick={() => void applyCoin()} disabled={walletControlsDisabled} className="w-full gap-2">
                             {mutatingAction === "coin" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                             {mutatingAction === "coin" ? "Đang áp dụng" : "Apply Coin"}
                           </Button>
                         </div>
                       </div>
 
+                      {walletNeedsReapply ? (
+                        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 md:flex-row md:items-center md:justify-between">
+                          <span>Billing amount or wallet balance changed. Please refresh and apply Coin/Credit again.</span>
+                          <Button type="button" variant="outline" onClick={() => void resetWalletUsage()} disabled={controlsDisabled} className="gap-2 bg-background">
+                            {mutatingAction === "wallet-reset" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                            Reset Coin/Credit
+                          </Button>
+                        </div>
+                      ) : null}
+
                       <Separator />
 
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="text-sm text-muted-foreground">Finalize sẽ khóa billing và gửi danh sách thuốc với số lượng thực tế, bao gồm các mặt hàng mua ngoài.</div>
-                        <Button type="button" onClick={() => void finalizeBilling()} disabled={!billing || !isDraft || Boolean(mutatingAction) || invalidMedicationDraft} className="gap-2">
+                        <Button type="button" onClick={() => void finalizeBilling()} disabled={!billing || !isDraft || Boolean(mutatingAction) || invalidMedicationDraft || walletNeedsReapply} className="gap-2">
                           {mutatingAction === "finalize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                           {mutatingAction === "finalize" ? "Đang finalize" : "Finalize Billing"}
                         </Button>
