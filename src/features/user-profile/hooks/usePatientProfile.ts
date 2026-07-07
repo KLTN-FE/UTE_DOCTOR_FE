@@ -22,6 +22,9 @@ const USER_PROFILE_TABS = [
   "wallet",
 ] as const;
 
+// Realtime room join is best-effort; never let a dead socket keep the page pending.
+const ROOM_JOIN_TIMEOUT_MS = 8000;
+
 // View-model hook: fetches and subscribes to patient profile updates.
 export const usePatientProfile = () => {
   const router = useRouter();
@@ -116,6 +119,22 @@ export const usePatientProfile = () => {
     const waitForRoomJoin = async () => {
       console.log("[usePatientProfile] waiting for ROOM_JOINED");
       const joined = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const finish = (result: boolean) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          if (timer) {
+            clearTimeout(timer);
+          }
+          patientProfileSocket.off(SocketEventsEnum.ROOM_JOINED, handleRoomJoined);
+          patientProfileSocket.offConnect(handleConnect);
+          resolve(result);
+        };
+
         const handleRoomJoined = (data: unknown) => {
           console.log("[usePatientProfile] ROOM_JOINED event received", data);
           const payload = data as { email?: string } | undefined;
@@ -129,9 +148,7 @@ export const usePatientProfile = () => {
 
           roomJoined = true;
           console.log("[usePatientProfile] room join confirmed");
-          patientProfileSocket.off(SocketEventsEnum.ROOM_JOINED, handleRoomJoined);
-          patientProfileSocket.offConnect(handleConnect);
-          resolve(true);
+          finish(true);
         };
 
         patientProfileSocket.onConnect(handleConnect);
@@ -139,13 +156,18 @@ export const usePatientProfile = () => {
         patientProfileSocket.on(SocketEventsEnum.ROOM_JOINED, handleRoomJoined);
         console.log("[usePatientProfile] ROOM_JOINED listener attached");
 
+        // Guard: a socket that never connects (e.g. prod WS blocked) must not keep
+        // this promise — and its listeners — pending forever.
+        timer = setTimeout(() => {
+          console.warn("[usePatientProfile] ROOM_JOINED timed out -> continuing without realtime updates");
+          finish(false);
+        }, ROOM_JOIN_TIMEOUT_MS);
+
         const connected = patientProfileSocket.connect();
         console.log("[usePatientProfile] socket connect called", { connected });
         if (!connected) {
           console.log("[usePatientProfile] socket connect failed before join");
-          patientProfileSocket.off(SocketEventsEnum.ROOM_JOINED, handleRoomJoined);
-          patientProfileSocket.offConnect(handleConnect);
-          resolve(false);
+          finish(false);
           return;
         }
 
@@ -161,21 +183,20 @@ export const usePatientProfile = () => {
 
     const bootstrap = async () => {
       console.log("[usePatientProfile] bootstrap started");
-      const joined = await waitForRoomJoin();
-      if (!mounted || !joined || !roomJoined) {
-        console.log("[usePatientProfile] bootstrap stopped before HTTP trigger", {
-          mounted,
-          joined,
-          roomJoined,
-        });
-        setLoading(false);
-        return;
-      }
 
-      console.log("[usePatientProfile] room joined and listener ready -> attach PATIENT_PROFILE listener");
+      // Realtime is optional. Attach the live-update listener up front, but the
+      // socket must never gate rendering: HTTP is the source of truth and always
+      // resolves `loading`. This prevents the infinite "Đang tải hồ sơ..." when the
+      // socket can't connect (e.g. WS blocked on Vercel).
       patientProfileSocket.on(SocketEventsEnum.PATIENT_PROFILE, handlePatientProfile);
       console.log("[usePatientProfile] PATIENT_PROFILE listener attached -> start HTTP trigger");
       await fetchUserProfile();
+
+      // Best-effort room join for subsequent live updates; failures/timeouts are
+      // ignored and do not affect the already-rendered profile.
+      void waitForRoomJoin().then((joined) => {
+        console.log("[usePatientProfile] realtime room join settled", { joined, roomJoined });
+      });
     };
 
     void bootstrap();

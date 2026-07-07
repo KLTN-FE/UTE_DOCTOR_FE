@@ -5,8 +5,47 @@ import { refreshAccessToken } from "@/lib/authRefresh";
 import { emitAuthLogout, getAccessToken } from "@/lib/authTokenStore";
 import { io, Socket } from "socket.io-client";
 
-const API_BASE = process.env.NEXT_PUBLIC_BASE_API || "http://localhost:3001/api";
-const BASE_API = API_BASE.replace(/\/api\/?$/, "");
+type SocketTransport = "polling" | "websocket";
+
+type SocketRuntimeConfig = {
+  baseUrl: string;
+  transports: SocketTransport[];
+};
+
+const DEFAULT_LOCAL_SOCKET_URL = "http://localhost:3001";
+const SOCKET_PATH = "/socket.io";
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL?.trim() || "";
+const isProductionBuild = process.env.NODE_ENV === "production";
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+
+const getSocketRuntimeConfig = (): SocketRuntimeConfig => {
+  // Explicit socket URL (e.g. a real backend host with TLS) -> connect directly, allow upgrade.
+  if (SOCKET_URL) {
+    return {
+      baseUrl: trimTrailingSlash(SOCKET_URL),
+      transports: ["websocket", "polling"],
+    };
+  }
+
+  // Local dev -> localhost backend, allow upgrade.
+  if (!isProductionBuild) {
+    return {
+      baseUrl: DEFAULT_LOCAL_SOCKET_URL,
+      transports: ["websocket", "polling"],
+    };
+  }
+
+  // Vercel prod with no explicit socket URL: connect to same origin via `/socket.io`
+  // and use polling only, so the Vercel rewrite can proxy it to the backend
+  // (Vercel cannot proxy the WebSocket upgrade). Empty baseUrl -> io(options).
+  return {
+    baseUrl: "",
+    transports: ["polling"],
+  };
+};
+
+const SOCKET_RUNTIME_CONFIG = getSocketRuntimeConfig();
 
 const SOCKET_NAMESPACES = {
   AUTH: "/auth",
@@ -59,9 +98,9 @@ class SocketClient {
 
   private createSocket(): Socket {
     const url = this.namespace ? `${this.baseUrl}${this.namespace}` : this.baseUrl;
-
-    const socket = io(url, {
-      transports: ["websocket"],
+    const options = {
+      path: SOCKET_PATH,
+      transports: SOCKET_RUNTIME_CONFIG.transports,
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 5,
@@ -70,7 +109,12 @@ class SocketClient {
         token: "",
       },
       autoConnect: false,
-    });
+    };
+
+    // Empty baseUrl (Vercel prod) -> io(options) connects to the current origin so the
+    // `/socket.io` rewrite proxies polling to the backend, instead of io("/patient-profile")
+    // resolving to the FE origin as a namespace.
+    const socket = url ? io(url, options) : io(options);
 
     socket.on("connect", () => {
       this.startHeartbeat();
@@ -332,7 +376,7 @@ const getSocketService = (namespace?: SocketNamespace) => {
     return cached;
   }
 
-  const service = new SocketClient(BASE_API, namespace);
+  const service = new SocketClient(SOCKET_RUNTIME_CONFIG.baseUrl, namespace);
   socketRegistry.set(key, service);
   return service;
 };
