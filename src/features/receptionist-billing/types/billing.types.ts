@@ -14,6 +14,7 @@ export interface BillingResponseDto {
   billingId: string;
   visitId: string;
   status: "DRAFT" | "FINALIZED" | "PAID";
+  paymentId?: string;
 
   consultationFee: number;
   medicationFee: number;
