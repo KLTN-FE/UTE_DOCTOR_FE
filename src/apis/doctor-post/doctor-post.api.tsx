@@ -2,14 +2,12 @@ import axiosClient from "@/lib/axiosClient";
 import { DataResponse } from "@/types/apiDTO";
 
 export const createDoctorPost = async (postData: {
-  doctorId: string;
   title?: string;
   description?: string;
   file: File;
 }) => {
   try {
     const formData = new FormData();
-    formData.append("doctorId", postData.doctorId);
     if (postData.title) formData.append("title", postData.title);
     if (postData.description)
       formData.append("description", postData.description);
@@ -17,12 +15,7 @@ export const createDoctorPost = async (postData: {
 
     const res = await axiosClient.post<DataResponse<any>>(
       "/doctor-posts",
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      }
+      formData
     );
 
     console.log("[Axios] Create doctor post:", res.data);
@@ -100,12 +93,7 @@ export const updateDoctorPost = async (
 
     const res = await axiosClient.put<DataResponse<any>>(
       `/doctor-posts/${id}`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      }
+      formData
     );
 
     console.log("[Axios] Update doctor post:", res.data);

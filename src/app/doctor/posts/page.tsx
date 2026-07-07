@@ -130,23 +130,25 @@ export default function DoctorPostsPage() {
 
 	const handleCreate = async () => {
 		const docId = typeof window !== 'undefined' ? localStorage.getItem('doctorId') : null;
-		if (!docId || !file) {
-			toast.error("Thiếu doctorId trong localStorage hoặc chưa chọn file");
+		if (!file) {
+			toast.error("Chưa chọn file video");
 			return;
 		}
 		setCreating(true);
 		try {
-			await createDoctorPost({ doctorId: docId, title: title || undefined, description: description || undefined, file });
+			await createDoctorPost({ title: title || undefined, description: description || undefined, file });
 			toast.success("Tạo bài đăng thành công");
 			// Reset form
 			setTitle("");
 			setDescription("");
 			setFile(null);
-			// Refresh list
-			const res = await getDoctorPostsByDoctor(docId, { page, limit });
-			const payload: any = (res as any)?.data ? (res as any).data : res;
-			setItems(payload?.items ?? []);
-			setPagination(payload?.pagination ?? { page, limit, total: (payload?.items ?? []).length, totalPages: 1 });
+			// Refresh list when the current doctor id is available in localStorage
+			if (docId) {
+				const res = await getDoctorPostsByDoctor(docId, { page, limit });
+				const payload: any = (res as any)?.data ? (res as any).data : res;
+				setItems(payload?.items ?? []);
+				setPagination(payload?.pagination ?? { page, limit, total: (payload?.items ?? []).length, totalPages: 1 });
+			}
 		} catch (e: any) {
 			toast.error("Tạo bài đăng thất bại");
 			console.error(e);
