@@ -13,6 +13,7 @@ export interface BillingMedicationDraft extends BillingMedicationDto {
 export interface BillingPreviewSummary {
   medicationSubtotal: number;
   totalAmount: number;
+  preWalletPayable: number;
   finalPayable: number;
 }
 
@@ -103,14 +104,17 @@ export const computeBillingPreviewSummary = (
   medications: BillingMedicationDraft[]
 ): BillingPreviewSummary => {
   const medicationSubtotal = medications.reduce((sum, medication) => sum + computeMedicationLineTotal(medication), 0);
-  const baseMedicationFee = billing?.medicationFee ?? 0;
-  const baseFinalPayable = billing?.finalPayable ?? 0;
   const totalAmount = (billing?.consultationFee ?? 0) + medicationSubtotal;
-  const finalPayable = Math.max(0, baseFinalPayable + (medicationSubtotal - baseMedicationFee));
+  const preWalletPayable = Math.max(
+    0,
+    totalAmount - (billing?.insuranceAmount ?? 0) - (billing?.depositUsed ?? 0)
+  );
+  const finalPayable = Math.max(0, preWalletPayable - (billing?.creditUsed ?? 0) - (billing?.coinUsed ?? 0));
 
   return {
     medicationSubtotal,
     totalAmount,
+    preWalletPayable,
     finalPayable,
   };
 };
