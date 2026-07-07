@@ -100,6 +100,10 @@ class SocketClient {
     const url = this.namespace ? `${this.baseUrl}${this.namespace}` : this.baseUrl;
     const options = {
       path: SOCKET_PATH,
+      // Request `/socket.io` (not `/socket.io/`): the trailing slash is what Vercel
+      // 308-redirects / fails to match against the `/socket.io/:path*` rewrite. Sending
+      // the no-slash form matches the rewrite directly — no redirect, no 404.
+      addTrailingSlash: false,
       transports: SOCKET_RUNTIME_CONFIG.transports,
       withCredentials: true,
       reconnection: true,
