@@ -34,16 +34,39 @@ type PaymentSession = {
   amount: number;
 };
 
+type FinalizedPaymentReference = {
+  billingId: string;
+  paymentId: string;
+};
+
 type NonNegativeAmountParseResult =
   | { valid: true; value: number }
   | { valid: false; message: string };
 
 const PAYMENT_POLL_INTERVAL_MS = 3500;
+const STALE_WALLET_MESSAGE = "Billing amount or wallet balance changed. Please refresh and apply Coin/Credit again.";
+const STALE_WALLET_ERROR_PATTERNS = [
+  "creditUsed cannot exceed remaining payable",
+  "coinUsed cannot exceed remaining payable",
+  "coinUsed cannot exceed coin discount cap",
+  "Insufficient credit",
+  "Insufficient coin",
+];
 
 const getErrorMessage = (error: unknown) => {
   const apiError = error as ApiErrorLike;
   const status = apiError?.response?.status;
   const backendMessage = apiError?.response?.data?.message || apiError?.message;
+  const normalizedBackendMessage = Array.isArray(backendMessage)
+    ? backendMessage.join(" ")
+    : backendMessage;
+
+  if (
+    normalizedBackendMessage &&
+    STALE_WALLET_ERROR_PATTERNS.some((pattern) => normalizedBackendMessage.includes(pattern))
+  ) {
+    return STALE_WALLET_MESSAGE;
+  }
 
   if (status === 400) return backendMessage || "Dữ liệu không hợp lệ.";
   if (status === 403) return backendMessage || "Bạn không có quyền thực hiện thao tác này.";
@@ -76,10 +99,11 @@ export const useReceptionistBilling = () => {
   const [billingLoadingError, setBillingLoadingError] = useState<string | null>(null);
   const [creditInput, setCreditInput] = useState("0");
   const [coinInput, setCoinInput] = useState("0");
-  const [mutatingAction, setMutatingAction] = useState<"credit" | "coin" | "finalize" | null>(null);
+  const [mutatingAction, setMutatingAction] = useState<"credit" | "coin" | "wallet-reset" | "finalize" | null>(null);
   const [paymentAction, setPaymentAction] = useState<"qr" | "cash" | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentSession, setPaymentSession] = useState<PaymentSession | null>(null);
+  const [finalizedPayment, setFinalizedPayment] = useState<FinalizedPaymentReference | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
 
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -101,6 +125,11 @@ export const useReceptionistBilling = () => {
   const isDraft = billing?.status === "DRAFT";
   const isFinalized = billing?.status === "FINALIZED";
   const isPaid = billing?.status === "PAID";
+  const isZeroPayable = Boolean(billing && billing.finalPayable <= 0);
+  const settlementPaymentId =
+    paymentSession?.paymentId ??
+    billing?.paymentId ??
+    (finalizedPayment && finalizedPayment.billingId === billing?.billingId ? finalizedPayment.paymentId : null);
   const canEditMedications = Boolean(isDraft);
 
   const previewSummary: BillingPreviewSummary = useMemo(
@@ -108,10 +137,53 @@ export const useReceptionistBilling = () => {
     [billing, billingMedications]
   );
 
+  const walletLimits = useMemo(() => {
+    const payableBeforeWallet = previewSummary.preWalletPayable;
+    const creditUsed = billing?.creditUsed ?? 0;
+    const coinUsed = billing?.coinUsed ?? 0;
+    const availableCredit = walletSummary?.availableCredit ?? 0;
+    const availableCoins = walletSummary?.availableCoins ?? 0;
+    const maxCoinDiscount = walletSummary?.maxApplicableDiscount ?? payableBeforeWallet;
+    const remainingPayableAfterCoin = Math.max(0, payableBeforeWallet - coinUsed);
+    const remainingPayableAfterCredit = Math.max(0, payableBeforeWallet - creditUsed);
+
+    return {
+      payableBeforeWallet,
+      availableCredit,
+      availableCoins,
+      maxCoinDiscount,
+      creditMax: Math.max(0, Math.min(availableCredit, remainingPayableAfterCoin)),
+      coinMax: Math.max(0, Math.min(availableCoins, maxCoinDiscount, remainingPayableAfterCredit)),
+    };
+  }, [billing?.coinUsed, billing?.creditUsed, previewSummary.preWalletPayable, walletSummary]);
+
+  const hasAppliedWalletValue = Boolean((billing?.creditUsed ?? 0) > 0 || (billing?.coinUsed ?? 0) > 0);
+  const walletNeedsReapply = Boolean(
+    walletSummary &&
+      hasAppliedWalletValue &&
+      ((billing?.creditUsed ?? 0) > walletLimits.creditMax || (billing?.coinUsed ?? 0) > walletLimits.coinMax)
+  );
+  const billingIdForInputSync = billing?.billingId;
+  const creditUsedForInputSync = billing?.creditUsed;
+  const coinUsedForInputSync = billing?.coinUsed;
+
   const invalidMedicationDraft = useMemo(
     () => hasInvalidBillingMedicationDraft(billingMedications),
     [billingMedications]
   );
+
+  useEffect(() => {
+    if (!billingIdForInputSync) return;
+
+    setCreditInput(String(creditUsedForInputSync ?? 0));
+    setCoinInput(String(coinUsedForInputSync ?? 0));
+  }, [billingIdForInputSync, coinUsedForInputSync, creditUsedForInputSync]);
+
+  useEffect(() => {
+    if (walletNeedsReapply || medicationError !== STALE_WALLET_MESSAGE) return;
+
+    setMedicationError(null);
+  }, [medicationError, walletNeedsReapply]);
 
   const stopPaymentPolling = useCallback(() => {
     if (pollingIntervalRef.current !== null) {
@@ -159,6 +231,17 @@ export const useReceptionistBilling = () => {
     try {
       const snapshot = await receptionistBillingService.getBillingByVisitId(visitId);
       setBilling(snapshot);
+      setFinalizedPayment((current) => {
+        if (snapshot.paymentId) {
+          return { billingId: snapshot.billingId, paymentId: snapshot.paymentId };
+        }
+
+        if (snapshot.status === "FINALIZED" && current?.billingId === snapshot.billingId) {
+          return current;
+        }
+
+        return null;
+      });
       setCreditInput(String(snapshot.creditUsed ?? 0));
       setCoinInput(String(snapshot.coinUsed ?? 0));
       return snapshot;
@@ -209,6 +292,7 @@ export const useReceptionistBilling = () => {
       lastSyncedBillingIdRef.current = null;
       setBillingLoadingError(null);
       setWalletSummary(null);
+      setFinalizedPayment(null);
       return;
     }
 
@@ -253,11 +337,27 @@ export const useReceptionistBilling = () => {
 
   const refreshBilling = useCallback(async () => {
     if (!selectedVisitId) return;
-    await loadBilling(selectedVisitId);
+    return loadBilling(selectedVisitId);
   }, [loadBilling, selectedVisitId]);
+
+  const refreshBillingAndWallet = useCallback(async () => {
+    const snapshot = await refreshBilling();
+    const billingId = snapshot?.billingId ?? billing?.billingId;
+    const billingStatus = snapshot?.status ?? billing?.status;
+
+    if (billingId && billingStatus === "DRAFT") {
+      await loadWalletSummary(billingId);
+    }
+
+    return snapshot;
+  }, [billing?.billingId, billing?.status, loadWalletSummary, refreshBilling]);
 
   const openQrPayment = useCallback(async () => {
     if (!billing || !billing.billingId || !selectedVisitId || !isFinalized || isPaid) return;
+    if (billing.finalPayable <= 0) {
+      toast.error("Billing payable is 0. Use Complete Billing instead of QR payment.");
+      return;
+    }
 
     setPaymentAction("qr");
 
@@ -281,21 +381,23 @@ export const useReceptionistBilling = () => {
 
   const markCashPaid = useCallback(async () => {
     if (!billing || !billing.billingId || !selectedVisitId || !isFinalized || isPaid) return;
+    if (!settlementPaymentId) {
+      toast.error("Payment ID is missing. Please finalize billing again or refresh after backend exposes paymentId in billing detail.");
+      return;
+    }
 
     setPaymentAction("cash");
 
     try {
-      const qrData = paymentSession ?? (await receptionistBillingService.getPaymentQR(billing.billingId));
-      const paymentId = qrData.paymentId;
-      await receptionistBillingService.markCashPaid(paymentId);
-      await refreshBilling();
-      toast.success("Đã ghi nhận thanh toán tiền mặt.");
+      await receptionistBillingService.markCashPaid(settlementPaymentId);
+      await refreshBillingAndWallet();
+      toast.success(isZeroPayable ? "Billing completed successfully." : "Đã ghi nhận thanh toán tiền mặt.");
     } catch (error: unknown) {
       toast.error(getErrorMessage(error));
     } finally {
       setPaymentAction(null);
     }
-  }, [billing, isFinalized, isPaid, paymentSession, refreshBilling, selectedVisitId]);
+  }, [billing, isFinalized, isPaid, isZeroPayable, refreshBillingAndWallet, selectedVisitId, settlementPaymentId]);
 
   useEffect(() => {
     if (!paymentDialogOpen || !paymentSession) {
@@ -360,6 +462,16 @@ export const useReceptionistBilling = () => {
       }
 
       const value = parsed.value;
+      const max = kind === "credit" ? walletLimits.creditMax : walletLimits.coinMax;
+
+      if (walletSummary && value > max) {
+        toast.error(
+          kind === "credit"
+            ? `Credit can cover up to ${max.toLocaleString("vi-VN")} after Coin.`
+            : `Coin can cover up to ${max.toLocaleString("vi-VN")} after Credit and Coin discount cap.`
+        );
+        return;
+      }
 
       setMutatingAction(kind);
 
@@ -370,7 +482,7 @@ export const useReceptionistBilling = () => {
           await receptionistBillingService.applyCoin(billing.billingId, value);
         }
 
-        await refreshBilling();
+        await refreshBillingAndWallet();
         toast.success(kind === "credit" ? "Áp dụng credit thành công." : "Áp dụng coin thành công.");
       } catch (error: unknown) {
         toast.error(getErrorMessage(error));
@@ -378,8 +490,34 @@ export const useReceptionistBilling = () => {
         setMutatingAction(null);
       }
     },
-    [billing, coinInput, creditInput, isDraft, refreshBilling, selectedVisitId]
+    [billing, coinInput, creditInput, isDraft, refreshBillingAndWallet, selectedVisitId, walletLimits, walletSummary]
   );
+
+  const resetWalletUsage = useCallback(async () => {
+    if (!billing || !billing.billingId || !isDraft) return;
+
+    setMutatingAction("wallet-reset");
+
+    try {
+      if ((billing.creditUsed ?? 0) > 0) {
+        await receptionistBillingService.applyCredit(billing.billingId, 0);
+      }
+
+      if ((billing.coinUsed ?? 0) > 0) {
+        await receptionistBillingService.applyCoin(billing.billingId, 0);
+      }
+
+      setCreditInput("0");
+      setCoinInput("0");
+      await refreshBillingAndWallet();
+      setMedicationError(null);
+      toast.success("Coin/Credit reset. Please apply wallet values again if needed.");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setMutatingAction(null);
+    }
+  }, [billing, isDraft, refreshBillingAndWallet]);
 
   const finalizeCurrentBilling = useCallback(async () => {
     if (!billing || !billing.billingId || !isDraft) return;
@@ -391,33 +529,57 @@ export const useReceptionistBilling = () => {
       return;
     }
 
+    if (walletNeedsReapply) {
+      setMedicationError(STALE_WALLET_MESSAGE);
+      toast.error(STALE_WALLET_MESSAGE);
+      void loadWalletSummary(billing.billingId);
+      return;
+    }
+
     setMutatingAction("finalize");
 
     try {
       const medications = buildFinalizeBillingMedicationPayload(billingMedications);
-      await receptionistBillingService.finalizeBilling(billing.billingId, { medications });
-      await refreshBilling();
+      const finalized = await receptionistBillingService.finalizeBilling(billing.billingId, { medications });
+      setFinalizedPayment(finalized?.paymentId ? { billingId: billing.billingId, paymentId: finalized.paymentId } : null);
+      await refreshBillingAndWallet();
       toast.success("Finalize billing thành công.");
     } catch (error: unknown) {
       toast.error(getErrorMessage(error));
     } finally {
       setMutatingAction(null);
     }
-  }, [billing, billingMedications, invalidMedicationDraft, isDraft, refreshBilling]);
+  }, [
+    billing,
+    billingMedications,
+    invalidMedicationDraft,
+    isDraft,
+    loadWalletSummary,
+    refreshBillingAndWallet,
+    walletNeedsReapply,
+  ]);
 
   const updateMedicationDispensedQty = useCallback((medicineId: string, value: string) => {
     setBillingMedications((current) =>
       updateBillingMedicationDraft(current, medicineId, { dispensedQty: sanitizeMedicationQuantity(value) })
     );
     setMedicationError(null);
-  }, []);
+
+    if (billing?.billingId) {
+      void loadWalletSummary(billing.billingId);
+    }
+  }, [billing?.billingId, loadWalletSummary]);
 
   const updateMedicationSource = useCallback((medicineId: string, value: string) => {
     setBillingMedications((current) =>
       updateBillingMedicationDraft(current, medicineId, { source: sanitizeMedicationSource(value) })
     );
     setMedicationError(null);
-  }, []);
+
+    if (billing?.billingId) {
+      void loadWalletSummary(billing.billingId);
+    }
+  }, [billing?.billingId, loadWalletSummary]);
 
   const resetMedicationDraft = useCallback(() => {
     if (!billing) {
@@ -449,13 +611,16 @@ export const useReceptionistBilling = () => {
     setCoinInput,
     isDraft,
     isFinalized,
+    isZeroPayable,
     mutatingAction,
     applyCredit: () => void applyBillingMutation("credit"),
     applyCoin: () => void applyBillingMutation("coin"),
+    resetWalletUsage: () => void resetWalletUsage(),
     finalizeBilling: () => void finalizeCurrentBilling(),
     paymentAction,
     paymentDialogOpen,
     paymentSession,
+    settlementPaymentId,
     paymentStatus,
     openQrPayment,
     markCashPaid,
@@ -468,6 +633,8 @@ export const useReceptionistBilling = () => {
     updateMedicationSource,
     resetMedicationDraft,
     walletSummary,
+    walletLimits,
+    walletNeedsReapply,
     loadingWalletSummary,
     walletSummaryError,
     walletInput,
