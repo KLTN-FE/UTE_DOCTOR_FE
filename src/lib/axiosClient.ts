@@ -8,6 +8,9 @@ import axios from "axios";
 
 const axiosClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_BASE_API || "http://localhost:3001/api",
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
 // Flag để tránh retry nhiều request cùng lúc trong khi refresh
