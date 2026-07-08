@@ -6,7 +6,7 @@
     },
     {
       "source": "/socket.io",
-      "destination": "http://13.215.87.147/socket.io"
+      "destination": "http://13.215.87.147/socket.io/"
     },
     {
       "source": "/socket.io/:path*",
