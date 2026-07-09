@@ -15,7 +15,8 @@ export const createDoctorPost = async (postData: {
 
     const res = await axiosClient.post<DataResponse<any>>(
       "/doctor-posts",
-      formData
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
     );
 
     console.log("[Axios] Create doctor post:", res.data);
@@ -93,7 +94,8 @@ export const updateDoctorPost = async (
 
     const res = await axiosClient.put<DataResponse<any>>(
       `/doctor-posts/${id}`,
-      formData
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
     );
 
     console.log("[Axios] Update doctor post:", res.data);
