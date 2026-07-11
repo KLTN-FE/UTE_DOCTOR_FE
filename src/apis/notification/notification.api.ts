@@ -1,4 +1,5 @@
 import axiosClient from "@/lib/axiosClient";
+import axios from "axios";
 import { DataResponse } from "@/types/apiDTO";
 import { Notification, NotificationMap, NotificationType } from "@/types/notification.dto";
 import { PaginationQueryDto } from "@/types/pagination/pagination-query.dto";
@@ -131,6 +132,8 @@ const normalizeNotificationDate = (notification: Notification): Notification => 
   };
 };
 
+const isCanceledRequest = (error: unknown) => axios.isCancel(error);
+
 /**
  * Lấy notification của user hiện tại (identity từ JWT) với phân trang.
  */
@@ -157,6 +160,10 @@ export const getNotificationsByEmail = async (
     console.log("[Axios] Get notifications by email:", res.data);
     return res.data;
   } catch (e) {
+    if (isCanceledRequest(e)) {
+      return;
+    }
+
     console.error("Failed to fetch notifications by email:", e);
   }
 };
@@ -172,6 +179,10 @@ export const getUnreadNotificationCount = async (
     console.log("[Axios] Get unread notification count:", res.data);
     return res.data;
   } catch (e) {
+    if (isCanceledRequest(e)) {
+      return;
+    }
+
     console.error("Failed to fetch unread notification count:", e);
   }
 };
