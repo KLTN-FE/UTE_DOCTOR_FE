@@ -83,3 +83,50 @@ export interface FrequentPatientsResult {
   window: AnalyticsWindow;
   items: FrequentPatientItem[];
 }
+
+export interface RevenueByDoctorItem {
+  doctorId: string;
+  doctorName: string | null;
+  consultationRevenue: number;
+  medicationRevenue: number;
+  revenue: number;
+  billingCount: number;
+}
+
+export interface RevenueBySpecialtyItem {
+  specialtyId: string;
+  name: string | null;
+  consultationRevenue: number;
+  medicationRevenue: number;
+  revenue: number;
+  billingCount: number;
+}
+
+export interface DispensedMedicationItem {
+  medicineId: string | null;
+  medicineName: string;
+  totalQty: number;
+  lineCount: number;
+  revenue: number;
+}
+
+export interface ExternalMedicationItem {
+  medicineId: string | null;
+  medicineName: string;
+  totalQty: number;
+  lineCount: number;
+}
+
+export interface RevenueResult {
+  window: AnalyticsWindow;
+  totalConsultationRevenue: number;
+  totalMedicationRevenue: number;
+  totalRevenue: number;
+  paidBillingCount: number;
+  doctorsWithRevenueCount: number;
+  specialtiesWithRevenueCount: number;
+  byDoctor: RevenueByDoctorItem[];
+  bySpecialty: RevenueBySpecialtyItem[];
+  topDispensedMedications: DispensedMedicationItem[];
+  topExternalMedications: ExternalMedicationItem[];
+}

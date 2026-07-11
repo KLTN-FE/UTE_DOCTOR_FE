@@ -1,5 +1,6 @@
 import {
   getFrequentPatients,
+  getRevenue as fetchRevenue,
   getTopDoctors,
   getTopRatedDoctors,
   getTopSpecialties,
@@ -9,6 +10,7 @@ import {
   AnalyticsQuery,
   DoctorReviewDetail,
   FrequentPatientsResult,
+  RevenueResult,
   TopDoctorsResult,
   TopRatedDoctorsResult,
   TopSpecialtiesResult,
@@ -36,6 +38,11 @@ export const adminAnalyticsService = {
 
   async getFrequentPatients(query: AnalyticsQuery = {}): Promise<FrequentPatientsResult> {
     const res = await getFrequentPatients(query);
+    return res.data;
+  },
+
+  async getRevenue(query: AnalyticsQuery = {}): Promise<RevenueResult> {
+    const res = await fetchRevenue(query);
     return res.data;
   },
 

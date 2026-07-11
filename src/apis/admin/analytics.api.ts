@@ -3,6 +3,7 @@ import { DataResponse } from "@/types/apiDTO";
 import {
   AnalyticsQuery,
   FrequentPatientsResult,
+  RevenueResult,
   TopDoctorsResult,
   TopRatedDoctorsResult,
   TopSpecialtiesResult,
@@ -41,6 +42,14 @@ export const getTopRatedDoctors = async (query: AnalyticsQuery = {}) => {
 export const getFrequentPatients = async (query: AnalyticsQuery = {}) => {
   const res = await axiosClient.get<DataResponse<FrequentPatientsResult>>(
     "/admin/analytics/frequent-patients",
+    { params: buildParams(query) }
+  );
+  return res.data;
+};
+
+export const getRevenue = async (query: AnalyticsQuery = {}) => {
+  const res = await axiosClient.get<DataResponse<RevenueResult>>(
+    "/admin/analytics/revenue",
     { params: buildParams(query) }
   );
   return res.data;

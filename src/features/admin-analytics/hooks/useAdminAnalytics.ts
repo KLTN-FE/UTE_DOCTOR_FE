@@ -25,7 +25,7 @@ export interface VolumeRange {
 
 const INITIAL = <T>(): MetricState<T> => ({ data: null, loading: true, error: null });
 
-const getErrorMessage = (error: unknown): string => {
+export const getErrorMessage = (error: unknown): string => {
   const apiError = error as {
     response?: { status?: number; data?: { message?: string } };
     message?: string;

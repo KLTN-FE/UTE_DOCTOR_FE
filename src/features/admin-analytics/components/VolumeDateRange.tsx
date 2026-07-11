@@ -20,23 +20,28 @@ const toInputValue = (epoch?: number): string => {
 };
 
 /**
- * Optional date-range override scoped STRICTLY to the scheduledAt-windowed group
- * (specialties / doctors / frequent-patients). It must never be rendered near or
- * applied to the all-time top-rated-doctors card.
+ * Optional date-range override scoped to one metric family. Defaults preserve
+ * the shipped scheduledAt dashboard labels; callers may rename the axis.
  */
 export function VolumeDateRange({
   value,
   onChange,
+  fromLabel = "Từ ngày khám",
+  toLabel = "Đến ngày khám",
+  resetLabel = "Mặc định 3 tháng",
 }: {
   value: VolumeRange;
   onChange: (value: VolumeRange) => void;
+  fromLabel?: string;
+  toLabel?: string;
+  resetLabel?: string;
 }) {
   const hasOverride = value.from !== undefined || value.to !== undefined;
 
   return (
     <div className="flex flex-wrap items-end gap-3">
       <label className="grid gap-1 text-sm">
-        <span className="font-medium text-slate-700 dark:text-slate-200">Từ ngày khám</span>
+        <span className="font-medium text-slate-700 dark:text-slate-200">{fromLabel}</span>
         <Input
           type="date"
           value={toInputValue(value.from)}
@@ -45,7 +50,7 @@ export function VolumeDateRange({
         />
       </label>
       <label className="grid gap-1 text-sm">
-        <span className="font-medium text-slate-700 dark:text-slate-200">Đến ngày khám</span>
+        <span className="font-medium text-slate-700 dark:text-slate-200">{toLabel}</span>
         <Input
           type="date"
           value={toInputValue(value.to)}
@@ -62,7 +67,7 @@ export function VolumeDateRange({
         disabled={!hasOverride}
       >
         <RotateCcw className="h-4 w-4" />
-        Mặc định 3 tháng
+        {resetLabel}
       </Button>
     </div>
   );

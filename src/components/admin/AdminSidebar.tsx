@@ -15,6 +15,7 @@ import {
   ChevronRight,
   UserRoundCheck,
   BarChart3,
+  Wallet,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -27,6 +28,7 @@ import { clearAuthSession } from '@/features/auth/utils/auth-storage';
 const menuItems = [
   // { name: 'Tổng quan', icon: LayoutDashboard, path: '/admin' },
   { name: 'Thống kê', icon: BarChart3, path: '/admin/analytics' },
+  { name: 'Doanh thu', icon: Wallet, path: '/admin/analytics/revenue' },
   { name: 'Bệnh nhân', icon: Users, path: '/admin/patients' },
   { name: 'Bác sĩ', icon: Stethoscope, path: '/admin/doctors' },
   { name: 'Lễ tân', icon: UserRoundCheck, path: '/admin/receptionists' },
