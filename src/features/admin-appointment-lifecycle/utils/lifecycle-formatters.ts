@@ -210,10 +210,10 @@ export const formatActorLabel = (actor?: ActorSummary | null): string => {
   }
 
   if (confidence === "EXACT") {
-    return actor.actorName || actor.actorEmail || actor.actorRole || "Unknown actor";
+    return actor.actorName || actor.actorRole || "Unknown actor";
   }
 
-  return actor.actorName || actor.actorEmail || actor.actorRole || "Unknown actor";
+  return actor.actorName || actor.actorRole || "Unknown actor";
 };
 
 export const isNoShowLifecycleNode = (node?: LifecycleNode | null): boolean => {
@@ -236,7 +236,7 @@ export const formatLifecycleNodeLabel = (node: LifecycleNode): string => {
 
 export const formatActorMeta = (actor?: ActorSummary | null): string => {
   if (!actor) return "";
-  const parts = [actor.actorEmail, actor.actorRole].filter(Boolean);
+  const parts = [actor.actorRole].filter(Boolean);
   return parts.join(" - ");
 };
 

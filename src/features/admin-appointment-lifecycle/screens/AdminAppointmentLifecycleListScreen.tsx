@@ -294,7 +294,7 @@ export default function AdminAppointmentLifecycleListScreen() {
                         </div>
                       </TableCell>
                       <TableCell className="min-w-[190px]">
-                        <p className="font-medium text-foreground">{appointment.patient?.email || "Missing related record"}</p>
+                        <p className="font-medium text-foreground">{appointment.patient?.name || "Missing related record"}</p>
                         <p className="break-all text-xs text-muted-foreground">{appointment.appointmentId}</p>
                       </TableCell>
                       <TableCell className="min-w-[150px]">

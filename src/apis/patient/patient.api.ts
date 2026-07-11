@@ -107,32 +107,3 @@ export const createMedicalHistoryRecord = async (patientId: string, payload: Med
   const res = await axiosClient.post(`/patients/${patientId}/medical-history`, payload);
   return res.data;
 };
-
-export const getPatientsAdmin = async (params: {
-  page?: number;
-  limit?: number;
-  keyword?: string;
-}) => {
-  try {
-    const res = await axiosClient.get<DataResponse<any>>("/patients/admin", {
-      params,
-    });
-
-    console.log("[Axios] Get patients admin:", res.data);
-    return res.data;
-  } catch (e) {
-    try {
-      const err: any = e;
-      if (err?.response) {
-        console.error("Failed to fetch patients admin - response:", err.response.status, err.response.data);
-      } else if (err?.request) {
-        console.error("Failed to fetch patients admin - no response:", err.request);
-      } else {
-        console.error("Failed to fetch patients admin - error:", err.message || err);
-      }
-    } catch (logErr) {
-      console.error("Error logging fetch patients admin error", logErr);
-    }
-    throw e;
-  }
-};

@@ -69,7 +69,7 @@ export interface AdminAppointmentQuery {
 
 export interface AdminAppointmentSummary {
   appointmentId: string;
-  patient: { email?: string | null } | null;
+  patient: { name?: string | null } | null;
   doctor: { id?: string | null; name?: string | null } | null;
   appointmentStatus: AppointmentStatus | null;
   assignmentStatus: AssignmentStatus | null;
@@ -96,7 +96,6 @@ export interface AdminAppointmentsPageResult {
 export interface ActorSummary {
   actorId?: string;
   actorName?: string;
-  actorEmail?: string;
   actorRole?: string;
   actorType?: ActorType;
   actorConfidence?: ActorConfidence;
@@ -154,7 +153,7 @@ export interface LifecycleTree {
     depositStatus: DepositStatus | null;
     scheduledAt: number | null;
     bookingDate: number | null;
-    patient?: { email?: string | null } | null;
+    patient?: { name?: string | null } | null;
     doctor?: { id?: string | null; name?: string | null } | null;
     noShowAt?: number | null;
     noShowActor?: string | null;

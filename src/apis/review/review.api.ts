@@ -1,9 +1,33 @@
 import axiosClient from "@/lib/axiosClient";
 import { DataResponse } from "@/types/apiDTO";
 
-export const createReview = async (reviewData: any) => {
+export interface ReviewPayload {
+  doctorId: string;
+  appointmentId: string;
+  rating: number;
+  comment?: string;
+}
+
+export interface ReviewDto {
+  _id: string;
+  doctorId?: string | { _id: string; doctorName?: string };
+  patientId?: string | { _id: string; profileId?: { _id?: string; name?: string | null } };
+  appointmentId?: string | { _id?: string };
+  rating?: number;
+  comment?: string | null;
+  createdAt?: string | number | null;
+}
+
+export type ReviewListPayload = ReviewDto[] | { items?: ReviewDto[]; data?: ReviewDto[] };
+
+export interface ReviewListParams {
+  page?: number;
+  limit?: number;
+}
+
+export const createReview = async (reviewData: ReviewPayload) => {
   try {
-    const res = await axiosClient.post<DataResponse<any>>("/reviews", reviewData);
+    const res = await axiosClient.post<DataResponse<ReviewDto>>("/reviews", reviewData);
     console.log("[Axios] Create review:", res.data);
     return res.data;
   } catch (error) {
@@ -16,7 +40,7 @@ export const getReviewByAppointmentAndPatient = async (
   patientId: string
 ) => {
   try {
-    const res = await axiosClient.get<DataResponse<any>>(
+    const res = await axiosClient.get<DataResponse<ReviewDto | null>>(
       "/reviews/by-appointment-patient",
       {
         params: { appointmentId, patientId },
@@ -31,7 +55,7 @@ export const getReviewByAppointmentAndPatient = async (
 
 export const getAllReviews = async () => {
   try {
-    const res = await axiosClient.get<DataResponse<any>>("/reviews");
+    const res = await axiosClient.get<DataResponse<ReviewListPayload>>("/reviews");
     console.log("[Axios] Get all reviews:", res.data);
     return res.data;
   } catch (error) {
@@ -39,9 +63,22 @@ export const getAllReviews = async () => {
   }
 };
 
+export const getReviewsByDoctor = async (doctorId: string, params: ReviewListParams = {}) => {
+  try {
+    const res = await axiosClient.get<DataResponse<ReviewListPayload>>(`/reviews/doctor/${doctorId}`, {
+      params,
+    });
+    console.log("[Axios] Get reviews by doctor:", res.data);
+    return res.data;
+  } catch (error) {
+    console.error("Failed to get reviews by doctor:", error);
+    throw error;
+  }
+};
+
 export const deleteReview = async (id: string) => {
   try {
-    const res = await axiosClient.delete<DataResponse<any>>(`/reviews/${id}`);
+    const res = await axiosClient.delete<DataResponse<ReviewDto>>(`/reviews/${id}`);
     console.log("[Axios] Delete review:", res.data);
     return res.data;
   } catch (error) {
