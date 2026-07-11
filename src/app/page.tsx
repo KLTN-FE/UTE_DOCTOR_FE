@@ -286,11 +286,11 @@ export default function Home() {
                   >
                     <div className="relative flex-1 bg-gray-300 dark:bg-gray-800 overflow-hidden">
                       {videoUrl ? (
-                        <iframe
+                        <video
+                          controls
+                          preload="metadata"
                           src={videoUrl}
-                          className="w-full h-full border-none"
-                          allow="autoplay; encrypted-media"
-                          allowFullScreen
+                          className="w-full h-full object-cover"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
