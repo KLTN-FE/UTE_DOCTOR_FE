@@ -1,7 +1,6 @@
 "use client";
 
 import { getCompletedAppointmentsByDoctor } from "@/apis/appointment/appointment.api";
-import { getPatientsAdmin } from "@/apis/patient/patient.api";
 import { MedicalRecordDetailModal } from "@/components/doctor/medical-record-detail-modal";
 import { PatientRecordCard } from "@/components/doctor/patient-record-card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +24,7 @@ export default function RecordsPage() {
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedAppointment, setSelectedAppointment] = useState<CompletedAppointment | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [allPatients, setAllPatients] = useState<any[]>([]);
+  const [patientOptions, setPatientOptions] = useState<{ id: string; name: string }[]>([]);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -35,28 +34,11 @@ export default function RecordsPage() {
 
   useEffect(() => {
     fetchAppointments();
-    fetchAllPatients();
   }, [currentPage, searchQuery, selectedPatientId]);
 
   useEffect(() => {
     handleFilter();
   }, [searchQuery, selectedPatientId, appointments]);
-
-  const fetchAllPatients = async () => {
-    try {
-      const response = await getPatientsAdmin({
-        page: 1,
-        limit: 1000,
-        keyword: "",
-      });
-
-      if (response?.data) {
-        setAllPatients(response.data.items || response.data);
-      }
-    } catch (error) {
-      console.error("Error fetching all patients:", error);
-    }
-  };
 
   const fetchAppointments = async () => {
     setLoading(true);
@@ -69,10 +51,27 @@ export default function RecordsPage() {
       });
 
       if (response?.data) {
-        setAppointments(response.data.items);
-        setFilteredAppointments(response.data.items);
+        const items = response.data.items;
+        setAppointments(items);
+        setFilteredAppointments(items);
         setTotalPages(response.data.pagination.totalPages);
         setTotalRecords(response.data.pagination.total);
+
+        // Derive the patient filter options from the appointments payload itself.
+        // The admin /patients/admin endpoint is now PII-scoped and no longer exposes
+        // a usable patient id, so we accumulate patients seen across loaded pages.
+        setPatientOptions((prev) => {
+          const map = new Map(prev.map((option) => [option.id, option]));
+          for (const appt of items) {
+            if (appt.patientId && !map.has(appt.patientId)) {
+              map.set(appt.patientId, {
+                id: appt.patientId,
+                name: appt.patient?.profile?.name || "Bệnh nhân",
+              });
+            }
+          }
+          return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+        });
       }
     } catch (error) {
       console.error("Error fetching appointments:", error);
@@ -156,9 +155,9 @@ export default function RecordsPage() {
                 className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
               >
                 <option value="">Tất cả bệnh nhân</option>
-                {allPatients.map((patient) => (
-                  <option key={patient._id} value={patient._id}>
-                    {patient.profile?.name || patient.profileId?.name || "Bệnh nhân"}
+                {patientOptions.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.name}
                   </option>
                 ))}
               </select>

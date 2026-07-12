@@ -688,7 +688,7 @@ export default function AdminAppointmentLifecycleDetailScreen({ appointmentId }:
         <CardContent className="grid gap-4 pt-6 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border bg-background p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Patient</p>
-            <p className="mt-1 break-all font-semibold">{appointment.patient?.email || "Missing related record"}</p>
+            <p className="mt-1 break-all font-semibold">{appointment.patient?.name || "Missing related record"}</p>
           </div>
           <div className="rounded-xl border bg-background p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Doctor</p>

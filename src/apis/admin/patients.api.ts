@@ -1,13 +1,35 @@
 import axiosClient from "@/lib/axiosClient";
-import { DataResponse } from "@/types/apiDTO";
 
-export const getPatientsAdmin = async (params: { 
+/**
+ * PII-scoped admin patient row (req-5). The endpoint returns ONLY these fields;
+ * `accountId` is a plain string handle used for the status toggle
+ * (`PATCH /users/:id/status`). See api-contract/README_ADMIN_PATIENT_LIST.md.
+ */
+export interface AdminPatientListItem {
+  name: string | null;
+  status: "ACTIVE" | "INACTIVE" | null;
+  accountId: string | null;
+}
+
+export interface AdminPatientListResponse {
+  code: string | number;
+  message: string;
+  data: AdminPatientListItem[];
+  pagination?: {
+    total?: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
+  };
+}
+
+export const getPatientsAdmin = async (params: {
   page?: number;
   limit?: number;
   keyword?: string;
-}) => {
+}): Promise<AdminPatientListResponse> => {
   try {
-    const res = await axiosClient.get<DataResponse<any>>("/patients/admin", {
+    const res = await axiosClient.get<AdminPatientListResponse>("/patients/admin", {
       params,
     });
 

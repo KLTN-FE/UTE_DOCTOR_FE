@@ -17,10 +17,10 @@ const axiosClient = axios.create({
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
-  reject: (error: any) => void;
+  reject: (error: unknown) => void;
 }> = [];
 
-const processQueue = (error: any, token: string | null = null) => {
+const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
@@ -43,6 +43,10 @@ axiosClient.interceptors.request.use((config) => {
 axiosClient.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+
     // Khi có response từ server
     if (error.response) {
       const { status, data } = error.response;

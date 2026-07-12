@@ -10,6 +10,7 @@ type SocketTransport = "polling" | "websocket";
 type SocketRuntimeConfig = {
   baseUrl: string;
   transports: SocketTransport[];
+  addTrailingSlash: boolean;
 };
 
 const DEFAULT_LOCAL_SOCKET_URL = "http://localhost:3001";
@@ -25,14 +26,17 @@ const getSocketRuntimeConfig = (): SocketRuntimeConfig => {
     return {
       baseUrl: trimTrailingSlash(SOCKET_URL),
       transports: ["websocket", "polling"],
+      addTrailingSlash: true,
     };
   }
 
-  // Local dev -> localhost backend, allow upgrade.
+  // Local dev fallback uses polling to avoid noisy browser-level WebSocket upgrade
+  // failures when the local backend or proxy rejects `ws://localhost:3001`.
   if (!isProductionBuild) {
     return {
       baseUrl: DEFAULT_LOCAL_SOCKET_URL,
-      transports: ["websocket", "polling"],
+      transports: ["polling"],
+      addTrailingSlash: true,
     };
   }
 
@@ -42,6 +46,7 @@ const getSocketRuntimeConfig = (): SocketRuntimeConfig => {
   return {
     baseUrl: "",
     transports: ["polling"],
+    addTrailingSlash: false,
   };
 };
 
@@ -100,12 +105,12 @@ class SocketClient {
     const url = this.namespace ? `${this.baseUrl}${this.namespace}` : this.baseUrl;
     const options = {
       path: SOCKET_PATH,
-      // Request `/socket.io` (not `/socket.io/`): the trailing slash is what Vercel
-      // 308-redirects / fails to match against the `/socket.io/:path*` rewrite. Sending
+      // Local/direct Socket.IO servers in this project expect `/socket.io/`,
+      // while the Vercel rewrite path must stay `/socket.io` to avoid redirects.
       // the no-slash form matches the rewrite directly — no redirect, no 404.
-      addTrailingSlash: false,
+      addTrailingSlash: SOCKET_RUNTIME_CONFIG.addTrailingSlash,
       transports: SOCKET_RUNTIME_CONFIG.transports,
-      withCredentials: true,
+      withCredentials: false,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 2000,
@@ -126,7 +131,7 @@ class SocketClient {
     });
 
     socket.on("connect_error", (err) => {
-      console.error(`[Socket] Connect error (${this.namespace || "/"}):`, err.message);
+      console.warn(`[Socket] Connect error (${this.namespace || "/"}):`, err.message);
       void this.handleConnectError(err);
     });
 
@@ -234,7 +239,7 @@ class SocketClient {
 
       const handleError = (error: Error) => {
         cleanup();
-        console.error(`[Socket] Connect error (${this.namespace || "/"}):`, error.message);
+        console.warn(`[Socket] Connect error (${this.namespace || "/"}):`, error.message);
         resolve(false);
       };
 
